@@ -1,5 +1,5 @@
 import React from 'react'
-import './InfoButton.scss'
+import './infoButton.scss'
 
 type Props = {
     variant: 'primary' | 'secondary' | 'tertiary' | 'general';
