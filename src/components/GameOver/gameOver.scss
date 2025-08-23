@@ -1,0 +1,34 @@
+.game-over-container {
+    width: 100%;
+    height: calc(100% + 10px);
+    backdrop-filter: blur(25.399999618530273px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: absolute;
+    top: -5px;
+    left: 0px;
+}
+
+.game-over-content{
+    position: relative;
+
+    .play-again {
+        cursor: pointer;
+        height: 55px;
+        width: 176px;
+        position: absolute;
+        top: 65%;
+        left: 50%;
+        transform: translate(-50%, -10%);
+    }
+    .main-menu {
+        cursor: pointer;
+        height: 55px;
+        width: 176px;
+        position: absolute;
+        top: 80%;
+        left: 50%;
+        transform: translate(-50%, 10%);
+    }
+}

@@ -1,0 +1,50 @@
+.info-btn {
+    outline: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 6px 12px;
+    font-family: 'Jersey 10';
+    font-weight: 400;
+    font-style: 'Regular';
+    font-size: 20px;
+    leading-trim: NONE;
+    line-height: 100%;
+    letter-spacing: -1%;
+    vertical-align: middle;
+    text-transform: uppercase;
+    cursor: pointer;
+
+
+    &.primary {
+        
+        background: url('/src/assets/images/icons/ButtonICON_blue.png');
+        background-position: center;
+        background-repeat: no-repeat;
+        background-size: contain;
+    }
+    &.secondary {
+        
+        background: url('/src/assets/images/icons/ButtonICON_purple.png');
+        background-position: center;
+        background-repeat: no-repeat;
+        background-size: contain;
+    }
+    &.tertiary {
+        
+        background: url('/src/assets/images/icons/ButtonICON_green.png');
+        background-position: center;
+        background-repeat: no-repeat;
+        background-size: contain;
+    }
+    &.general {
+        
+        background: url('/src/assets/images/icons/ButtonICON_normal.png');
+        background-position: center;
+        background-repeat: no-repeat;
+        background-size: contain;
+    }
+}
+
