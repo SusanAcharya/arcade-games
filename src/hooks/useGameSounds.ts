@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 
 // Import sound files
 import diceRollSound from "../assets/sound/diceroll.mp3";
@@ -8,10 +8,16 @@ import sidebarOpenSound from "../assets/sound/sidebaropen.wav";
 import victorySound from "../assets/sound/victorysound.mp3";
 import defeatSound from "../assets/sound/defeatsound.mp3";
 import cardFlipSound from "../assets/sound/cardflip.mp3";
+import fightSound from "../assets/sound/fight.mp3";
+import audienceCheerSound from "../assets/sound/audience_cheer.mp3";
+import audienceBooSound from "../assets/sound/audience_booing.mp3";
+import diceBattleMusic from "../assets/sound/battle/dice_battle.mp3";
 
 const useGameSounds = () => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioCache = useRef<Map<string, AudioBuffer>>(new Map());
+  const backgroundMusicRef = useRef<HTMLAudioElement | null>(null);
+  const [isMusicMuted, setIsMusicMuted] = useState(false);
 
   const ensureAudio = useCallback(async () => {
     if (!audioContextRef.current) {
@@ -102,16 +108,84 @@ const useGameSounds = () => {
   }, [playSound]);
 
   const playTileClick = useCallback(() => {
-    playSound(cardFlipSound, 0.6);
+    playSound(cardFlipSound, 0.9);
   }, [playSound]);
 
   const playTileReveal = useCallback(() => {
-    playSound(cardFlipSound, 0.7);
+    playSound(cardFlipSound, 0.9);
   }, [playSound]);
 
   const playBombReveal = useCallback(() => {
-    playSound(damageSound, 0.8);
+    playSound(damageSound, 0.3);
   }, [playSound]);
+
+  const playFight = useCallback(() => {
+    playSound(fightSound, 0.8);
+  }, [playSound]);
+
+  const playAudienceCheer = useCallback(() => {
+    playSound(audienceCheerSound, 0.8);
+  }, [playSound]);
+
+  const playAudienceBoo = useCallback(() => {
+    playSound(audienceBooSound, 0.8);
+  }, [playSound]);
+
+  const playBackgroundMusic = useCallback(() => {
+    return new Promise<void>((resolve, reject) => {
+      try {
+        // Stop any existing background music
+        if (backgroundMusicRef.current) {
+          backgroundMusicRef.current.pause();
+          backgroundMusicRef.current = null;
+        }
+
+        // Create new audio element for background music
+        const audio = new Audio(diceBattleMusic);
+        audio.loop = true;
+        audio.volume = isMusicMuted ? 0.0 : 0.2; // Muted or small volume
+        audio.preload = 'auto';
+        
+        // Store reference
+        backgroundMusicRef.current = audio;
+        
+        // Play the music
+        audio.play().then(() => {
+          resolve();
+        }).catch(error => {
+          console.error("Failed to play background music:", error);
+          reject(error);
+        });
+      } catch (error) {
+        console.error("Failed to setup background music:", error);
+        reject(error);
+      }
+    });
+  }, [isMusicMuted]);
+
+  const toggleMusicMute = useCallback(() => {
+    setIsMusicMuted(prev => {
+      const newMuted = !prev;
+      
+      // Update current music volume if playing
+      if (backgroundMusicRef.current) {
+        backgroundMusicRef.current.volume = newMuted ? 0.0 : 0.3;
+      }
+      
+      return newMuted;
+    });
+  }, []);
+
+  const stopBackgroundMusic = useCallback(() => {
+    if (backgroundMusicRef.current) {
+      backgroundMusicRef.current.pause();
+      backgroundMusicRef.current = null;
+    }
+  }, []);
+
+  const isMusicPlaying = useCallback(() => {
+    return backgroundMusicRef.current && !backgroundMusicRef.current.paused;
+  }, []);
 
   return {
     playDiceRoll,
@@ -127,6 +201,14 @@ const useGameSounds = () => {
     playTileClick,
     playTileReveal,
     playBombReveal,
+    playFight,
+    playAudienceCheer,
+    playAudienceBoo,
+    playBackgroundMusic,
+    stopBackgroundMusic,
+    toggleMusicMute,
+    isMusicMuted,
+    isMusicPlaying,
   };
 };
 

@@ -11,7 +11,7 @@ type Props = {
     headerRight?: React.ReactNode;
 }
 
-const GameContainer = ({ title, bg, children, arcadeWidth = '85%', headerRight }: Props) => {
+const GameContainer = ({ title, bg, children, arcadeWidth = '100%', headerRight }: Props) => {
     const navigate = useNavigate();
   return (
     <div className='main-game-container'>
@@ -22,7 +22,7 @@ const GameContainer = ({ title, bg, children, arcadeWidth = '85%', headerRight }
             <h3 className='game-title'>{title}</h3>
             <div className="header-right">{headerRight}</div>
         </div>
-        <div style={{width: `${arcadeWidth}`, background: `url(${bg})`, backgroundPosition: 'center', backgroundRepeat: 'no-repeat', backgroundSize: 'cover' }} className="arcade-game-wrapper">
+        <div style={{width: `${arcadeWidth}`, background: `url(${bg})`}} className="arcade-game-wrapper">
             {children}
         </div>
     </div>

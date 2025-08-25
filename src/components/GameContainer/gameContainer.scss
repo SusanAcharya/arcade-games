@@ -37,6 +37,9 @@
     border: none;
     position: relative;
     overflow: hidden;
+    background-size: 152% 152% !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
 }
 
 .arcade-game-wrapper::before {

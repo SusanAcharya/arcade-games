@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import "./diceShootout.scss";
 import GameContainer from "../../components/GameContainer/GameContainer";
 import { IMAGES } from "../../constant/images";
@@ -9,7 +9,9 @@ import {
   FaHome, 
   FaFileAlt, 
   FaScroll, 
-  FaBars 
+  FaBars,
+  FaVolumeMute,
+  FaMusic
 } from "react-icons/fa";
 import { IoClose } from "react-icons/io5";
 import ActionButton from "../../components/Button/ActionButton/ActionButton";
@@ -35,9 +37,11 @@ type Props = {};
 const MAX_HP = 100;
 const HEAL_AMOUNT = 10;
 const MAX_HEALS = 3;
-const BOT_ACT_DELAY_MS = 2000;
-const ROLL_ANIM_MS = 1500; // how long the dice animation runs
-const RESULT_HOLD_MS = 1500; // hide dice before switching turns
+// Timing constants
+const ROLL_ANIM_MS = 1000;
+const RESULT_HOLD_MS = 500;
+const BOT_ACT_DELAY_MS = 1000;
+const CLASH_MS = 1500; // 500ms in + 1500ms hold + 500ms out
 
 // Optional: enable Degen Mode (6 crit = 12 dmg, +20 bonus if healed at <=5 and won).
 const DEGEN_ENABLED = false;
@@ -179,6 +183,14 @@ const DiceShootout = (props: Props) => {
 
   const [showDice, setShowDice] = React.useState<boolean>(true);
   const [revealing, setRevealing] = React.useState<boolean>(false);
+  const [clashSide, setClashSide] = useState<"player" | "bot" | null>(null);
+  const [retroNumbers, setRetroNumbers] = useState<Array<{id: number, value: string, type: 'damage' | 'heal', target: 'player' | 'bot', x: number, y: number}>>([]);
+  const [playerHitTilt, setPlayerHitTilt] = useState(false);
+  const [botHitTilt, setBotHitTilt] = useState(false);
+  const [gameLog, setGameLog] = useState<Array<{id: number, message: string, timestamp: number}>>([]);
+  const [retroMessage, setRetroMessage] = useState<{id: number, text: string, type: 'double' | 'max' | 'critical'} | null>(null);
+  const [opponentDialogue, setOpponentDialogue] = useState<{id: number, text: string} | null>(null);
+  const [lastActionTime, setLastActionTime] = useState<number>(Date.now());
 
   // Optional scoring with Degen clutch bonus
   const [playerPts, setPlayerPts] = React.useState<number>(0);
@@ -202,8 +214,6 @@ const DiceShootout = (props: Props) => {
   const [botHealFx, setBotHealFx] = React.useState<boolean>(false);
   const [playerLowWarned, setPlayerLowWarned] = React.useState<boolean>(false);
   const [botLowWarned, setBotLowWarned] = React.useState<boolean>(false);
-  const [playerHitTilt, setPlayerHitTilt] = useState(false);
-  const [botHitTilt, setBotHitTilt] = useState(false);
 
   // Sounds
   const {
@@ -217,6 +227,14 @@ const DiceShootout = (props: Props) => {
     playDefeat,
     playLowHP,
     playGameOver,
+    playFight,
+    playAudienceCheer,
+    playAudienceBoo,
+    playBackgroundMusic,
+    stopBackgroundMusic,
+    toggleMusicMute,
+    isMusicMuted,
+    isMusicPlaying,
   } = useGameSounds();
 
   // Helpers to display bars
@@ -244,18 +262,84 @@ const DiceShootout = (props: Props) => {
     [playerClutchHeal, botClutchHeal]
   );
 
+  const addLogEntry = React.useCallback((message: string) => {
+    const newEntry = {
+      id: Date.now(),
+      message,
+      timestamp: Date.now()
+    };
+    setGameLog(prev => {
+      const updated = [newEntry, ...prev.slice(0, 1)]; // Keep only 2 entries
+      return updated;
+    });
+  }, []);
+
+  const showRetroMessage = React.useCallback((text: string, type: 'double' | 'max' | 'critical') => {
+    const id = Date.now();
+    setRetroMessage({ id, text, type });
+    
+    // Remove message after animation
+    setTimeout(() => {
+      setRetroMessage(null);
+    }, 2000);
+  }, []);
+
+  const showOpponentDialogue = useCallback((text: string) => {
+    const id = Date.now();
+    setOpponentDialogue({ id, text });
+    
+    // Remove dialogue after 3 seconds
+    setTimeout(() => {
+      setOpponentDialogue(null);
+    }, 3000);
+  }, []);
+
+  // Idle detection and dialogue
+  React.useEffect(() => {
+    const checkIdle = () => {
+      const now = Date.now();
+      const idleTime = now - lastActionTime;
+      
+      if (idleTime > 15000) { // 15 seconds - audience boo
+        playAudienceBoo();
+        setLastActionTime(now); // Reset timer
+      } else if (idleTime > 10000) { // 10 seconds - opponent taunt
+        const taunts = [
+          "*****",
+          "Come at me kid!",
+          "Noob boy",
+          "You Afraid?"
+        ];
+        const randomTaunt = taunts[Math.floor(Math.random() * taunts.length)];
+        showOpponentDialogue(randomTaunt);
+        setLastActionTime(now); // Reset timer
+      }
+    };
+
+    const interval = setInterval(checkIdle, 1000); // Check every second
+    return () => clearInterval(interval);
+  }, [lastActionTime, showOpponentDialogue, playAudienceBoo]);
+
   // Attack and Heal
   const doAttack = React.useCallback(
     async (who: "player" | "bot") => {
       if (rolling || turn !== who || revealing) return;
 
+      // Update last action time
+      setLastActionTime(Date.now());
+
       const [r1, r2] = rollTwoDice();
       const base = r1 + r2;
-      const damage = base;
+      const isDouble = r1 === r2;
+      const isDouble1 = isDouble && r1 === 1;
+      const isCritical = base === 12;
+      const damage = isDouble ? base * 2 : base;
 
+      // Add log entry
+      const attacker = who === "player" ? "You" : "Opponent";
       // Start dice: show + rolling phase
       setShowDice(true);
-      setRevealing(false);
+      setRevealing(true); // mark sequence busy to prevent duplicate bot actions
       setRolling(true);
       setLastRoll(r1);
       setLastRoll2(r2);
@@ -263,8 +347,21 @@ const DiceShootout = (props: Props) => {
       if (who === "player") setLastPlayerAction("attack");
 
       playDiceRoll();
-      setShake(true);
-      setTimeout(() => setShake(false), 420);
+      // Critical haptic feedback for roll of 12
+      if (isCritical && 'vibrate' in navigator) {
+        navigator.vibrate([100, 50, 100, 50, 200]);
+      }
+
+      // Show retro message for doubles
+      if (isDouble) {
+        if (isDouble1) {
+          showRetroMessage("DOUBLE 1!", "double");
+        } else {
+          showRetroMessage("DOUBLE!", "double");
+        }
+      } else if (isCritical) {
+        showRetroMessage("MAX DAMAGE!", "max");
+      }
 
       // Show hit marker 500ms before roll animation ends
       const earlyMs = Math.max(0, ROLL_ANIM_MS - 500);
@@ -278,146 +375,182 @@ const DiceShootout = (props: Props) => {
         }
       }, earlyMs);
 
-      // After dice animation, reveal number and apply damage
+      // After dice animation, start clash, then apply damage on return
       setTimeout(() => {
         setRolling(false);
-        setRevealing(false);
-        setShowDice(false);
+        setShowDice(false); // dice disappear during clash
+        setClashSide(who);
+        // play hit during the clash
+        playFight();
 
-        if (who === "player") {
-          setBotHP((hp) => {
-            const newHP = clamp(hp - damage, 0, MAX_HP);
-            playDamageDone();
-            playDamageTaken();
-            setBotHitFx(true);
-            setShake(true);
-            // Add retro damage number
-            addRetroNumber(damage, 'damage', 'bot');
-            // Trigger avatar tilt animation
-            triggerAvatarHitTilt('bot');
-            setTimeout(() => setShake(false), 420);
-            setTimeout(() => setBotHitFx(false), 600);
-            if (newHP <= 10 && !botLowWarned && newHP > 0) {
-              playLowHP();
-              setBotLowWarned(true);
-            }
-            if (newHP <= 0) endGame("player");
-            return newHP;
-          });
-        } else {
-          setPlayerHP((hp) => {
-            const newHP = clamp(hp - damage, 0, MAX_HP);
-            playDamageDone();
-            playDamageTaken();
-            setPlayerHitFx(true);
-            setShake(true);
-            // Add retro damage number
-            addRetroNumber(damage, 'damage', 'player');
-            // Trigger avatar tilt animation
-            triggerAvatarHitTilt('player');
-            setTimeout(() => setShake(false), 420);
-            setTimeout(() => setPlayerHitFx(false), 600);
-            if (newHP <= 10 && !playerLowWarned && newHP > 0) {
-              playLowHP();
-              setPlayerLowWarned(true);
-            }
-            if (newHP <= 0) endGame("bot");
-            return newHP;
-          });
-        }
+        setTimeout(() => { // after clash animation
+          setClashSide(null); // end clash animation
 
-        // Wait, then proceed to next turn and show dice again (unless game over)
-        setTimeout(() => {
-          setRevealing(false);
-          setShowDice(true);
-          setTurn((t) =>
-            t === "over" ? "over" : who === "player" ? "bot" : "player"
-          );
-        }, RESULT_HOLD_MS);
+          // Play audience reaction for special rolls
+          if (isDouble1) {
+            playAudienceBoo();
+          } else if (isDouble || isCritical) {
+            playAudienceCheer();
+          }
+
+          // Add log entry once for the attack
+          addLogEntry(`${attacker} attacked and dealt ${damage} damage.`);
+
+          // Show opponent dialogue based on damage dealt
+          if (who === "player") {
+            if (damage >= 10) {
+              showOpponentDialogue("You got hands!");
+            } else if (damage <= 2) {
+              showOpponentDialogue("That felt like air brushed me");
+            }
+          } else {
+            if (damage > 9) {
+              showOpponentDialogue("Too easy!");
+            }
+          }
+
+          if (who === "player") {
+            setBotHP((hp) => {
+              const newHP = clamp(hp - damage, 0, MAX_HP);
+              addRetroNumber(damage, 'damage', 'bot');
+              triggerAvatarHitTilt('bot');
+              if (newHP <= 10 && !botLowWarned && newHP > 0) {
+                playLowHP();
+                setBotLowWarned(true);
+              }
+              if (newHP <= 0) endGame("player");
+              return newHP;
+            });
+          } else {
+            setPlayerHP((hp) => {
+              const newHP = clamp(hp - damage, 0, MAX_HP);
+              addRetroNumber(damage, 'damage', 'player');
+              triggerAvatarHitTilt('player');
+              if (newHP <= 10 && !playerLowWarned && newHP > 0) {
+                playLowHP();
+                setPlayerLowWarned(true);
+              }
+              if (newHP <= 0) endGame("bot");
+              return newHP;
+            });
+          }
+
+          // Wait, then proceed to next turn and show dice again (unless game over)
+          setTimeout(() => {
+            setShowDice(true); // Show dice again
+            setTurn((t) =>
+              t === "over" ? "over" : who === "player" ? "bot" : "player"
+            );
+            setRevealing(false); // sequence complete
+          }, RESULT_HOLD_MS);
+        }, CLASH_MS); // Wait for clash animation to complete
       }, ROLL_ANIM_MS);
     },
-    [rolling, turn, endGame, revealing, playDiceRoll, playDamageDone, playDamageTaken, playLowHP, botLowWarned, playerLowWarned]
+    [rolling, turn, endGame, revealing, playDiceRoll, playDamageDone, playDamageTaken, playLowHP, botLowWarned, playerLowWarned, showRetroMessage, playAudienceCheer, playAudienceBoo, showOpponentDialogue]
   );
 
   const doHeal = React.useCallback(
     async (who: "player" | "bot") => {
       if (rolling || turn !== who || revealing) return;
 
-      // Roll dice for heal amount
+      // Update last action time
+      setLastActionTime(Date.now());
+
       const [r1, r2] = rollTwoDice();
-      // You can customize heal amount based on roll, e.g.:
-      // const healAmount = roll * 2; // or just roll
-      const healAmount = r1 + r2;
+      const base = r1 + r2;
+      const isDouble = r1 === r2;
+      const isDouble1 = isDouble && r1 === 1;
+      const isCritical = base === 12;
+      const healValue = isDouble ? base * 2 : base;
 
-      // Validate ability to heal before starting animation
-      if (who === "player") {
-        if (playerHeals <= 0 || playerHP >= MAX_HP) return;
-      } else {
-        if (botHeals <= 0 || botHP >= MAX_HP) return;
-      }
-
+      // Add log entry
+      const healer = who === "player" ? "You" : "Opponent";
+      // Start dice: show + rolling phase
+      setShowDice(true);
+      setRevealing(true); // block duplicate actions during sequence
+      setRolling(true);
       setLastRoll(r1);
       setLastRoll2(r2);
       setLastAction("heal");
       if (who === "player") setLastPlayerAction("heal");
 
-      // Start dice animation for heal as well
-      setShowDice(true);
-      setRevealing(false);
-      setRolling(true);
-
-
       playDiceRoll();
-      setShake(true);
-      setTimeout(() => setShake(false), 360);
+      // Critical haptic feedback for roll of 12
+      if (isCritical && 'vibrate' in navigator) {
+        navigator.vibrate([100, 50, 100, 50, 200]);
+      }
 
-      // After dice animation, apply the heal and hold the view
+      // Show retro message for doubles
+      if (isDouble) {
+        if (isDouble1) {
+          showRetroMessage("DOUBLE 1!", "double");
+        } else {
+          showRetroMessage("DOUBLE!", "double");
+        }
+      } else if (isCritical) {
+        showRetroMessage("MAX HEAL!", "max");
+      }
+
       setTimeout(() => {
         setRolling(false);
-        setRevealing(false);
         setShowDice(false);
+
+        // Play audience reaction for special rolls
+        if (isDouble1) {
+          playAudienceBoo();
+        } else if (isDouble || isCritical) {
+          playAudienceCheer();
+        }
+
+        // Add log entry once for the heal
+        addLogEntry(`${healer} healed for ${healValue} HP.`);
+
+        // Show opponent dialogue for low heal amounts
+        if (who === "player" && healValue < 5) {
+          showOpponentDialogue("That much ain't gonna save you");
+        }
 
         if (who === "player") {
           setPlayerHeals((h) => Math.max(0, h - 1));
           setPlayerHP((hp) => {
             if (hp <= 5 && DEGEN_ENABLED) setPlayerClutchHeal(true);
-            const healed = Math.min(MAX_HP, hp + healAmount);
-            const healValue = healed - hp;
+            const healed = Math.min(MAX_HP, hp + healValue);
+            const actualHealValue = healed - hp;
             // Add retro heal number
-            addRetroNumber(healValue, 'heal', 'player');
+            addRetroNumber(actualHealValue, 'heal', 'player');
+            triggerAvatarHitTilt('player');
             playHealDone();
             setPlayerHealFx(true);
-            setTimeout(() => setPlayerHealFx(false), 700);
-            if (healed > 10) setPlayerLowWarned(false);
+            setTimeout(() => setPlayerHealFx(false), 600);
             return healed;
           });
         } else {
           setBotHeals((h) => Math.max(0, h - 1));
           setBotHP((hp) => {
             if (hp <= 5 && DEGEN_ENABLED) setBotClutchHeal(true);
-            const healed = Math.min(MAX_HP, hp + healAmount);
-            const healValue = healed - hp;
+            const healed = Math.min(MAX_HP, hp + healValue);
+            const actualHealValue = healed - hp;
             // Add retro heal number
-            addRetroNumber(healValue, 'heal', 'bot');
+            addRetroNumber(actualHealValue, 'heal', 'bot');
+            triggerAvatarHitTilt('bot');
             playHealDone();
             setBotHealFx(true);
-            setTimeout(() => setBotHealFx(false), 700);
-            if (healed > 10) setBotLowWarned(false);
+            setTimeout(() => setBotHealFx(false), 600);
             return healed;
           });
         }
 
-        // Wait, then switch turn and show dice again
+        // Wait, then proceed to next turn and show dice again (unless game over)
         setTimeout(() => {
-          setRevealing(false);
           setShowDice(true);
           setTurn((t) =>
             t === "over" ? "over" : who === "player" ? "bot" : "player"
           );
+          setRevealing(false);
         }, RESULT_HOLD_MS);
       }, ROLL_ANIM_MS);
     },
-    [rolling, revealing, turn, playerHeals, botHeals, playerHP, botHP, playDiceRoll, playHealDone]
+    [rolling, revealing, turn, playerHeals, botHeals, playerHP, botHP, playDiceRoll, playHealDone, showRetroMessage, playAudienceCheer, playAudienceBoo, showOpponentDialogue]
   );
 
 
@@ -449,7 +582,7 @@ const DiceShootout = (props: Props) => {
       }
     }, BOT_ACT_DELAY_MS);
     return () => clearTimeout(t);
-  }, [turn, rolling, revealing, botDecide, doAttack, doHeal, botHeals, botHP]);
+  }, [turn, rolling, revealing, botDecide, doAttack, doHeal, botHeals, botHP, showRetroMessage, playAudienceCheer, playAudienceBoo]);
 
   const reset = React.useCallback(() => {
     setPlayerHP(MAX_HP);
@@ -493,10 +626,75 @@ const DiceShootout = (props: Props) => {
     };
   }, []);
 
+  // Start background music when component mounts
+  React.useEffect(() => {
+    // Try to start music immediately
+    const startMusic = async () => {
+      try {
+        await playBackgroundMusic();
+      } catch (error) {
+        console.log("Background music couldn't start automatically, waiting for user interaction");
+      }
+    };
+    
+    startMusic();
+     
+    // Cleanup: stop music when component unmounts
+    return () => {
+      stopBackgroundMusic();
+    };
+  }, [playBackgroundMusic, stopBackgroundMusic]);
+
+  // Start music on first user interaction if it hasn't started
+  React.useEffect(() => {
+    const handleUserInteraction = () => {
+      if (!isMusicPlaying()) {
+        playBackgroundMusic();
+      }
+      // Remove listeners after first interaction
+      window.removeEventListener('click', handleUserInteraction);
+      window.removeEventListener('keydown', handleUserInteraction);
+      window.removeEventListener('touchstart', handleUserInteraction);
+    };
+
+    window.addEventListener('click', handleUserInteraction, { once: true });
+    window.addEventListener('keydown', handleUserInteraction, { once: true });
+    window.addEventListener('touchstart', handleUserInteraction, { once: true });
+
+    return () => {
+      window.removeEventListener('click', handleUserInteraction);
+      window.removeEventListener('keydown', handleUserInteraction);
+      window.removeEventListener('touchstart', handleUserInteraction);
+    };
+  }, [playBackgroundMusic, isMusicPlaying]);
+
   const playerTurn = turn === "player";
   const over = turn === "over";
   const canPlayerHeal = playerHeals > 0 && playerHP < MAX_HP;
   const playerDisabled = !playerTurn || rolling || revealing || over;
+
+  // Keyboard event handlers
+  React.useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      if (turn !== 'player' || playerDisabled) return; // Only allow when it's player's turn
+
+      switch (event.key.toLowerCase()) {
+        case 'e':
+          event.preventDefault();
+          doAttack('player');
+          break;
+        case 'c':
+          event.preventDefault();
+          if (canPlayerHeal) {
+            doHeal('player');
+          }
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [turn, playerDisabled, canPlayerHeal, doAttack, doHeal]);
 
   const openSidebar = React.useCallback(() => {
     setSidebarOpen(true);
@@ -513,14 +711,6 @@ const DiceShootout = (props: Props) => {
     setControlsOpen(true);
   }, []);
 
-  const [retroNumbers, setRetroNumbers] = useState<Array<{
-    id: number;
-    value: string;
-    type: 'damage' | 'heal';
-    x: number;
-    y: number;
-    target: 'player' | 'bot';
-  }>>([]);
   const [nextNumberId, setNextNumberId] = useState(0);
 
   const addRetroNumber = React.useCallback((value: number, type: 'damage' | 'heal', target: 'player' | 'bot') => {
@@ -530,11 +720,11 @@ const DiceShootout = (props: Props) => {
     // Position based on target
     let x, y;
     if (target === 'player') {
-      x = 50; // Left side for player
-      y = 20; // Above the HP span
+      x = 20; // Closer to player avatar
+      y = 10; // Above the avatar
     } else {
-      x = 300; // Right side for bot
-      y = 20; // Above the HP span
+      x = 160; // Closer to bot avatar
+      y = 10; // Above the avatar
     }
     
     setRetroNumbers(prev => [...prev, {
@@ -575,157 +765,126 @@ const DiceShootout = (props: Props) => {
           </div>
         }
       >
-        <div className={`dice-shootout-wrapper ${shake ? "shake" : ""} ${sidebarOpen ? "blurred" : ""}`} style={{ position: "relative" }}>
-          <div className="flex items-start justify-between">
-            <button
-              onClick={openSidebar}
-              className="menu-btn"
-              aria-label="menu"
-            >
-              <GiHamburgerMenu size={20} />
-            </button>
-
-            <div
-              className="dice-shootout-playerB"
-              style={{ position: "relative" }}
-            >
-              {/* Retro damage/heal numbers for bot only */}
-              {retroNumbers
-                .filter(num => num.target === 'bot')
-                .map((num) => (
-                  <div
-                    key={num.id}
-                    className={num.type === 'damage' ? 'retro-damage-number' : 'retro-heal-number'}
-                    style={{
-                      left: num.x,
-                      top: num.y,
-                    }}
-                  >
-                    {num.value}
-                  </div>
-                ))}
-
-              <div className="dice-shootout-playerB-hp">
-                <span>HP: {botHP}</span>
-                <div className="dice-shootout-playerB-hp-bar">
-                  <div
-                    className={`dice-shootout-playerB-hp-bar-progress ${botHP <= 10 && botHP > 0 ? "low" : ""}`}
-                    style={{
-                      width: botHPWidth,
-                      height: "100%",
-                      transition: "width 260ms ease",
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className={`dice-shootout-playerB-avatar`}>
-                <img className={`${botHitFx ? "hit" : ""} ${botHealFx ? "heal" : ""} ${turn === "bot" ? "active-turn" : ""} ${botHitTilt ? "avatar-hit-tilt" : ""}`} src={IMAGES.PLAYER_B_AVATAR} alt="Enemy avatar" />
-              </div>
+        <div className={`dice-shootout-wrapper ${shake ? "shake" : ""} ${sidebarOpen ? "blurred" : ""} ${clashSide === 'player' ? 'clashing-player' : ''} ${clashSide === 'bot' ? 'clashing-bot' : ''}`} style={{ position: "relative" }}>
+          {/* Retro Message Display */}
+          {retroMessage && (
+            <div className={`retro-message ${retroMessage.type}`}>
+              {retroMessage.text}
             </div>
+          )}
+
+          {/* Game Log */}
+          <div className="game-log">
+            {gameLog.map((entry) => (
+              <div key={entry.id} className="log-entry">
+                {entry.message}
+              </div>
+            ))}
           </div>
 
-          <div
-            className="dice-game-content"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              position: "relative",
-            }}
-          >
-            <div className="dice-persistent" style={{ opacity: showDice ? 1 : 0 }}>
-              <div className={`dice-pair ${rolling ? "rolling" : ""}`}>
-                <RiveDice
-                  key={`die1-${rolling ? "rolling" : "idle"}-${lastRoll ?? "na"}`}
-                  rolling={rolling}
-                  onEnd={() => {}}
-                  showNumber={null}
-                  outcome={lastRoll}
-                  size={280}
-                />
-                <RiveDice
-                  key={`die2-${rolling ? "rolling" : "idle"}-${lastRoll2 ?? "na"}`}
-                  rolling={rolling}
-                  onEnd={() => {}}
-                  showNumber={null}
-                  outcome={lastRoll2}
-                  size={280}
-                />
+          {/* Menu Button - Top Left */}
+          <button onClick={openSidebar} className="menu-btn" aria-label="menu">
+            <GiHamburgerMenu size={20} />
+          </button>
+
+          <div className="arena-row">
+            {/* Player fighter (left) */}
+            <div className="fighter player">
+              <div className="hp-over">
+                <div className="dice-shootout-playerA-hp">
+                  <span>HP: {playerHP}</span>
+                  <div className="dice-shootout-playerA-hp-bar">
+                    <div className={`dice-shootout-playerA-hp-bar-progress ${playerHP <= 10 && playerHP > 0 ? 'danger' : playerHP <= 40 && playerHP > 10 ? 'warning' : ''}`} style={{ width: playerHPWidth, height: '100%', transition: 'width 260ms ease' }} />
+                  </div>
+                </div>
               </div>
-              {!rolling && showDice && (
-                <div className="turn-cue">
-                  {turn === "player" ? "Your turn" : turn === "bot" ? "Opponent's turn" : ""}
+              <div className="avatar">
+                {/* Retro numbers for player */}
+                {retroNumbers.filter(n => n.target === 'player').map(n => (
+                  <div key={n.id} className={n.type === 'damage' ? 'retro-damage-number' : 'retro-heal-number'} style={{ left: n.x, top: n.y }}>
+                    {n.value}
+                  </div>
+                ))}
+                <img className={`${playerHitFx ? 'hit' : ''} ${playerHealFx ? 'heal' : ''} ${turn === 'player' ? 'active-turn' : ''} ${playerHitTilt ? 'avatar-hit-tilt' : ''}`} src={IMAGES.PLAYER_A_AVATAR} alt="Player avatar" />
+              </div>
+            </div>
+
+            {/* Dice center */}
+            <div className="dice-center" style={{ opacity: showDice ? 1 : 0 }}>
+              <div className={`dice-pair ${rolling ? 'rolling' : ''}`}>
+                <RiveDice key={`die1-${rolling ? 'rolling' : 'idle'}-${lastRoll ?? 'na'}`} rolling={rolling} onEnd={() => {}} showNumber={null} outcome={lastRoll} size={240} />
+                <RiveDice key={`die2-${rolling ? 'rolling' : 'idle'}-${lastRoll2 ?? 'na'}`} rolling={rolling} onEnd={() => {}} showNumber={null} outcome={lastRoll2} size={240} />
+              </div>
+              {!rolling && showDice && <div className="turn-cue">{turn === 'player' ? 'Your turn' : turn === 'bot' ? "Opponent's turn" : ''}</div>}
+            </div>
+
+            {/* Bot fighter (right) */}
+            <div className="fighter bot">
+              {/* Opponent Dialogue */}
+              {opponentDialogue && (
+                <div className="opponent-dialogue">
+                  <div className="dialogue-background" style={{ width: 'fit-content' }}>
+                    <img src={IMAGES.DIALOGUE_BOX} alt="dialogue box" style={{ width: 'auto', height: 'auto' }} />
+                    <div className="dialogue-text">
+                      {opponentDialogue.text}
+                    </div>
+                  </div>
                 </div>
               )}
-            </div>
-            {false && turn !== "over" && !showDice && null}
-          </div>
 
-          <div className="flex items-end justify-between">
-            <div
-              className="dice-shootout-playerA"
-              style={{ position: "relative" }}
-            >
-              {/* Retro damage/heal numbers for player only */}
-              {retroNumbers
-                .filter(num => num.target === 'player')
-                .map((num) => (
-                  <div
-                    key={num.id}
-                    className={num.type === 'damage' ? 'retro-damage-number' : 'retro-heal-number'}
-                    style={{
-                      left: num.x,
-                      top: num.y,
-                    }}
-                  >
-                    {num.value}
+              <div className="hp-over">
+                <div className="dice-shootout-playerB-hp">
+                  <span>HP: {botHP}</span>
+                  <div className="dice-shootout-playerB-hp-bar">
+                    <div className={`dice-shootout-playerB-hp-bar-progress ${botHP <= 10 && botHP > 0 ? 'danger' : botHP <= 40 && botHP > 10 ? 'warning' : ''}`} style={{ width: botHPWidth, height: '100%', transition: 'width 260ms ease' }} />
                   </div>
-                ))}
-
-              <div className={`dice-shootout-playerA-avatar`}>
-                <img className={`${playerHitFx ? "hit" : ""} ${playerHealFx ? "heal" : ""} ${turn === "player" ? "active-turn" : ""} ${playerHitTilt ? "avatar-hit-tilt" : ""}`} src={IMAGES.PLAYER_A_AVATAR} alt="Player avatar" />
-              </div>
-
-              <div className="dice-shootout-playerA-hp">
-                <span>HP: {playerHP}</span>
-                <div className="dice-shootout-playerA-hp-bar">
-                  <div
-                    className={`dice-shootout-playerA-hp-bar-progress ${playerHP <= 10 && playerHP > 0 ? "low" : ""}`}
-                    style={{
-                      width: playerHPWidth,
-                      height: "100%",
-                      transition: "width 260ms ease",
-                    }}
-                  />
                 </div>
               </div>
-            </div>
-
-            <div className="dice-shootout-actions">
-              <div className="action-button-container">
-                <ActionButton
-                  className="attack"
-                  handleClick={() => doAttack("player")}
-                  // disabled={playerDisabled}
-                >
-                  <img src={IMAGES.ATTACK_BTN_ICON} alt="Attack" />
-                </ActionButton>
-                <div className="action-button-label">Attack</div>
-              </div>
-
-              <div className="action-button-container">
-                <ActionButton
-                  className="heal"
-                  handleClick={() => doHeal("player")}
-                  disabled={!canPlayerHeal}
-                >
-                  <img src={IMAGES.HEAL_BTN_ICON} alt="Heal" />
-                </ActionButton>
-                <div className="action-button-label">Heal ({playerHeals})</div>
+              <div className="avatar">
+                {/* Retro numbers for bot */}
+                {retroNumbers.filter(n => n.target === 'bot').map(n => (
+                  <div key={n.id} className={n.type === 'damage' ? 'retro-damage-number' : 'retro-heal-number'} style={{ left: n.x, top: n.y }}>
+                    {n.value}
+                  </div>
+                ))}
+                <img className={`${botHitFx ? 'hit' : ''} ${botHealFx ? 'heal' : ''} ${turn === 'bot' ? 'active-turn' : ''} ${botHitTilt ? 'avatar-hit-tilt' : ''}`} src={IMAGES.PLAYER_B_AVATAR} alt="Enemy avatar" />
               </div>
             </div>
           </div>
+
+          {/* Actions */}
+          <div className="dice-shootout-actions">
+              {!playerDisabled && (
+                <>
+                  <div className="action-button-container">
+                    <ActionButton
+                      className="attack"
+                      handleClick={() => doAttack("player")}
+                    >
+                      <img src={IMAGES.ATTACK_BTN_ICON} alt="Attack" />
+                    </ActionButton>
+                    <div className="action-button-label">Attack</div>
+                  </div>
+                  <div className="action-button-container">
+                    <ActionButton
+                      className="heal"
+                      handleClick={() => doHeal("player")}
+                      disabled={!canPlayerHeal}
+                    >
+                      <img src={IMAGES.HEAL_BTN_ICON} alt="Heal" />
+                    </ActionButton>
+                    <div className="action-button-label">Heal ({playerHeals})</div>
+                  </div>
+                </>
+              )}
+            </div>
+
+          {/* Fight cloud effect during clash */}
+          {clashSide && (
+            <div className="fight-cloud">
+              <img src={IMAGES.FIGHT_CLOUD} alt="clash" />
+            </div>
+          )}
         </div>
 
         {botHP === 0 && <Victory />}
@@ -735,6 +894,9 @@ const DiceShootout = (props: Props) => {
         {sidebarOpen && (
           <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)}>
             <div className="sidebar" onClick={(e) => e.stopPropagation()}>
+              <div className="sidebar-icon" style={{ color: isMusicMuted ? '#9CA3AF' : '#10B981' }} data-label={isMusicMuted ? "Unmute Music" : "Mute Music"} onClick={toggleMusicMute}>
+                {isMusicMuted ? <FaVolumeMute /> : <FaMusic />}
+              </div>
               <div className="sidebar-icon" style={{ color: '#8B5CF6' }} data-label="Controls" onClick={openControls}>
                 <FaGamepad />
               </div>
@@ -776,3 +938,5 @@ const DiceShootout = (props: Props) => {
 };
 
 export default DiceShootout;
+
+

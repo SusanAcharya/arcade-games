@@ -25,7 +25,7 @@ const allArcades = [
         id: 3,
         title: 'Gang War 21',
         image: IMAGES.ALL_ARCADES.ARCADE_GAME_1,
-        route: '/game-one',
+        route: PATHS.GANG_WAR_21,
         bg: "#B05A36"
     },
     {
