@@ -5,5 +5,5 @@ export const PATHS = {
   LIBRARY: "/game-library",
   DICE_SHOOTOUT: '/dice-shootout',
   DEGEN_SWEEPER: '/degen-sweeper',
-  GANG_WAR_21: '/gang-war-21',
+  // GANG_WAR_21: '/gang-war-21',
 } as const;
