@@ -1234,3 +1234,21 @@
     60% { transform: translateX(-50%) scale(1.15); opacity: 1; }
     100% { transform: translateX(-50%) scale(1); opacity: 1; }
 }
+
+.banner-generic {
+    position: absolute;
+    top: 22%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2001;
+    font-family: 'Jersey 10';
+    font-size: 64px;
+    color: #FFD700;
+    text-shadow: 4px 4px 0 #000, 0 0 24px rgba(255,215,0,0.7);
+    animation: banner-pop 600ms ease-out;
+    pointer-events: none;
+}
+.banner-generic.banner-danger {
+    color: #FF3B3B;
+    text-shadow: 4px 4px 0 #000, 0 0 24px rgba(255,0,0,0.7);
+}

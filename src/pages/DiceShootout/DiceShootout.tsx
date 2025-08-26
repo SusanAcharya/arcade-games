@@ -194,6 +194,26 @@ const DiceShootout = (props: Props) => {
   const [rollScore, setRollScore] = useState<number | null>(null);
   const [fightBanner, setFightBanner] = useState<boolean>(false);
   const [koBanner, setKoBanner] = useState<boolean>(false);
+  const [bannerText, setBannerText] = useState<string | null>(null);
+  const [bannerClass, setBannerClass] = useState<string>('');
+  const flashBanner = React.useCallback((text: string, cls: string = '') => {
+    setBannerText(text);
+    setBannerClass(cls);
+    setTimeout(() => setBannerText(null), 1200);
+  }, []);
+  // Round completion tracking (both sides acted)
+  const playerTurnDoneRef = React.useRef<boolean>(false);
+  const botTurnDoneRef = React.useRef<boolean>(false);
+  const handleTurnComplete = React.useCallback((actor: 'player' | 'bot') => {
+    if (actor === 'player') playerTurnDoneRef.current = true;
+    else botTurnDoneRef.current = true;
+    if (playerTurnDoneRef.current && botTurnDoneRef.current) {
+      setPlayerSpecialMeter(m => clamp(m + 1, 0, 5));
+      setBotSpecialMeter(m => clamp(m + 1, 0, 5));
+      playerTurnDoneRef.current = false;
+      botTurnDoneRef.current = false;
+    }
+  }, []);
 
   // Optional scoring with Degen clutch bonus
   const [playerPts, setPlayerPts] = React.useState<number>(0);
@@ -403,6 +423,7 @@ const DiceShootout = (props: Props) => {
         }
       } else if (isCritical) {
         showRetroMessage("MAX DAMAGE!", "max");
+        flashBanner('Maximum Damage');
       }
 
       // Show hit marker 500ms before roll animation ends
@@ -473,6 +494,7 @@ const DiceShootout = (props: Props) => {
               // Bot HP fell below 10 threshold => bot gains +1 meter (comeback)
               if (newHP <= 10 && prevHP > 10) {
                 setBotSpecialMeter((m) => clamp(m + 1, 0, 5));
+                flashBanner('Do or Die', 'banner-danger');
               }
               if (newHP <= 0) endGame("player");
               return newHP;
@@ -497,6 +519,7 @@ const DiceShootout = (props: Props) => {
               // Player HP fell below 10 threshold => player gains +1 meter (comeback)
               if (newHP <= 10 && prevHP > 10) {
                 setPlayerSpecialMeter((m) => clamp(m + 1, 0, 5));
+                flashBanner('Do or Die', 'banner-danger');
               }
               if (newHP <= 0) endGame("bot");
               return newHP;
@@ -515,11 +538,12 @@ const DiceShootout = (props: Props) => {
               t === "over" ? "over" : who === "player" ? "bot" : "player"
             );
             setRevealing(false); // sequence complete
+            handleTurnComplete(who);
           }, RESULT_HOLD_MS);
         }, CLASH_MS); // Wait for clash animation to complete
       }, ROLL_ANIM_MS);
     },
-    [rolling, turn, endGame, revealing, playDiceRoll, playDamageDone, playDamageTaken, playLowHP, botLowWarned, playerLowWarned, showRetroMessage, playAudienceCheer, playAudienceBoo, showOpponentDialogue, showDoubleRollDialogue]
+    [rolling, turn, endGame, revealing, playDiceRoll, playDamageDone, playDamageTaken, playLowHP, botLowWarned, playerLowWarned, showRetroMessage, playAudienceCheer, playAudienceBoo, showOpponentDialogue, showDoubleRollDialogue, handleTurnComplete]
   );
 
   const doHeal = React.useCallback(
@@ -562,6 +586,7 @@ const DiceShootout = (props: Props) => {
         }
       } else if (isCritical) {
         showRetroMessage("MAX HEAL!", "max");
+        flashBanner('Maximum Damage');
       }
 
       setTimeout(() => {
@@ -630,10 +655,11 @@ const DiceShootout = (props: Props) => {
             t === "over" ? "over" : who === "player" ? "bot" : "player"
           );
           setRevealing(false);
+          handleTurnComplete(who);
         }, RESULT_HOLD_MS);
       }, ROLL_ANIM_MS);
     },
-    [rolling, revealing, turn, playerHeals, botHeals, playerHP, botHP, playDiceRoll, playHealDone, showRetroMessage, playAudienceCheer, playAudienceBoo, showOpponentDialogue, showDoubleRollDialogue]
+    [rolling, revealing, turn, playerHeals, botHeals, playerHP, botHP, playDiceRoll, playHealDone, showRetroMessage, playAudienceCheer, playAudienceBoo, showOpponentDialogue, showDoubleRollDialogue, handleTurnComplete]
   );
 
   // Player Special move
@@ -652,6 +678,7 @@ const DiceShootout = (props: Props) => {
     const specialDamage = 20;
     const specialHeal = 10;
     addLogEntry(`You used SPECIAL and dealt ${specialDamage} damage, healed ${specialHeal} HP.`);
+    flashBanner('Special Used');
 
     setTimeout(() => {
       setClashSide(null);
@@ -673,9 +700,10 @@ const DiceShootout = (props: Props) => {
         setShowDice(true);
         setTurn('bot');
         setRevealing(false);
+        handleTurnComplete('player');
       }, RESULT_HOLD_MS);
     }, CLASH_MS);
-  }, [rolling, revealing, turn, playerSpecialMeter, playFight, triggerImpactFx, playDamageTaken, playDamageDone, playHealDone]);
+  }, [rolling, revealing, turn, playerSpecialMeter, playFight, triggerImpactFx, playDamageTaken, playDamageDone, playHealDone, handleTurnComplete]);
 
   // Bot Special move (auto when ready)
   const doBotSpecial = React.useCallback(async () => {
@@ -692,6 +720,7 @@ const DiceShootout = (props: Props) => {
     const specialDamage = 20;
     const specialHeal = 10;
     addLogEntry(`Opponent used SPECIAL and dealt ${specialDamage} damage, healed ${specialHeal} HP.`);
+    flashBanner('Special Used');
 
     setTimeout(() => {
       setClashSide(null);
@@ -705,9 +734,10 @@ const DiceShootout = (props: Props) => {
         setShowDice(true);
         setTurn('player');
         setRevealing(false);
+        handleTurnComplete('bot');
       }, RESULT_HOLD_MS);
     }, CLASH_MS);
-  }, [rolling, revealing, turn, botSpecialMeter, playFight, triggerImpactFx, playDamageTaken, playDamageDone, playHealDone]);
+  }, [rolling, revealing, turn, botSpecialMeter, playFight, triggerImpactFx, playDamageTaken, playDamageDone, playHealDone, handleTurnComplete]);
 
   // Bot decision logic (bot can only heal if player healed last)
   const botDecide = React.useCallback((): "attack" | "heal" => {
@@ -766,6 +796,8 @@ const DiceShootout = (props: Props) => {
     setBotLowWarned(false);
     setPlayerSpecialMeter(0);
     setBotSpecialMeter(0);
+    playerTurnDoneRef.current = false;
+    botTurnDoneRef.current = false;
   }, []);
 
   // One-time user interaction unlock for AudioContext (Safari/iOS policies)
@@ -970,7 +1002,7 @@ const DiceShootout = (props: Props) => {
               </div>
             </div>
           )}
-          {/* Retro Message Display */}
+          {bannerText && <div className={`banner-generic ${bannerClass}`}>{bannerText}</div>}
           {retroMessage && (
             <div className={`retro-message ${retroMessage.type}`}>
               {retroMessage.text}
