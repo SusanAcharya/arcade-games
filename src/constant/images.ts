@@ -7,8 +7,11 @@ import PLAYER_A_AVATAR from '../assets/images/playerA_avatar.png';
 import PLAYER_B_AVATAR from '../assets/images/playerB_avatar.png';
 import attack_btn_icon from '../assets/images/actionButtons/SwordsGold 1.png'
 import heal_btn_icon from '../assets/images/actionButtons/ShieldGold_heal.png'
+import special_atk_icon from '../assets/images/actionButtons/specialatk.png'
 import damage_box from '../assets/images/diceShootout/damage_box.png'
 import heal_box from '../assets/images/diceShootout/heal_box.png'
+import versus from '../assets/images/diceShootout/versus.png'
+import nameplate from '../assets/images/diceShootout/nameplate.png'
 import degen_sweeper_flipped from '../assets/images/degenSweeper/unflipped.png'
 import degen_sweeper_bomb from '../assets/images/degenSweeper/bomb.png'
 import degen_sweeper_safe from '../assets/images/degenSweeper/safe.png'
@@ -108,6 +111,7 @@ export const IMAGES = {
     PLAYER_B_AVATAR,
     ATTACK_BTN_ICON: attack_btn_icon,
     HEAL_BTN_ICON: heal_btn_icon,
+    SPECIAL_ATK_ICON: special_atk_icon,
     BUTTON_FRAME: button_frame,
     UNDO_ICON: undo_icon,
     BUTTON_ICON_PURPLE: button_icon_purple,
@@ -120,7 +124,9 @@ export const IMAGES = {
     AUDIO_CONTROLLER: audio_controller,
     DICE_SHOOTOUT: {
         DAMAGE_BOX: damage_box,
-        HEAL_BOX: heal_box
+        HEAL_BOX: heal_box,
+        VERSUS: versus,
+        NAMEPLATE: nameplate
     },
     DEGEN_SWEEPER: {
         FLIPPED: degen_sweeper_flipped,
