@@ -2,6 +2,8 @@ import React, { useState, useCallback } from "react";
 import "./diceShootout.scss";
 import GameContainer from "../../components/GameContainer/GameContainer";
 import { IMAGES } from "../../constant/images";
+import { PATHS } from "../../path/paths";
+import { useNavigate } from "react-router-dom";
 import { GiHamburgerMenu } from "react-icons/gi";
 import { 
   FaGamepad, 
@@ -11,7 +13,8 @@ import {
   FaScroll, 
   FaBars,
   FaVolumeMute,
-  FaMusic
+  FaMusic,
+  FaQuestionCircle
 } from "react-icons/fa";
 import { IoClose } from "react-icons/io5";
 import ActionButton from "../../components/Button/ActionButton/ActionButton";
@@ -32,7 +35,7 @@ import Modal from '../../components/Modal/Modal';
 import SettingsModal from '../../components/Modal/SettingsModal';
 import ControlsModal from '../../components/Modal/ControlsModal';
 
-type Props = {};
+type Props = { mode?: 'B1' | 'B2'; skipSelect?: boolean };
 
 const MAX_HP = 50;
 const HEAL_AMOUNT = 10;
@@ -165,10 +168,12 @@ function RiveDice({
 }
 
 const DiceShootout = (props: Props) => {
+  const isBattleTwo = props.mode === 'B2';
+  const navigate = useNavigate();
   // Core state
   const [playerHP, setPlayerHP] = React.useState<number>(MAX_HP);
   const [botHP, setBotHP] = React.useState<number>(MAX_HP);
-  const [playerHeals, setPlayerHeals] = React.useState<number>(MAX_HEALS);
+  const [playerHeals, setPlayerHeals] = React.useState<number>(isBattleTwo ? 0 : MAX_HEALS);
   const [botHeals, setBotHeals] = React.useState<number>(MAX_HEALS);
   const [turn, setTurn] = React.useState<"player" | "bot" | "over">("player");
   const [rolling, setRolling] = React.useState<boolean>(false);
@@ -201,6 +206,9 @@ const DiceShootout = (props: Props) => {
     setBannerClass(cls);
     setTimeout(() => setBannerText(null), 1200);
   }, []);
+  const [postVersusVisible, setPostVersusVisible] = useState<boolean>(false);
+  const [winnerSide, setWinnerSide] = useState<"player" | "bot" | null>(null);
+  const [currentTargetFace, setCurrentTargetFace] = useState<number | null>(null);
   // Round completion tracking (both sides acted)
   const playerTurnDoneRef = React.useRef<boolean>(false);
   const botTurnDoneRef = React.useRef<boolean>(false);
@@ -228,10 +236,13 @@ const DiceShootout = (props: Props) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [showVersus, setShowVersus] = useState<boolean>(true);
   const [versusCountdown, setVersusCountdown] = useState<number>(5);
   const [playerSpecialMeter, setPlayerSpecialMeter] = useState<number>(0); // 0..5
   const [botSpecialMeter, setBotSpecialMeter] = useState<number>(0); // 0..5
+  const [showOpponentSelect, setShowOpponentSelect] = useState<boolean>(props.skipSelect ? false : true);
+  const [selectedOpponent, setSelectedOpponent] = useState<1 | 2 | 3 | null>(isBattleTwo ? 2 : null);
 
   // FX state
   const [shake, setShake] = React.useState<boolean>(false);
@@ -240,6 +251,8 @@ const DiceShootout = (props: Props) => {
   const [botHitFx, setBotHitFx] = React.useState<boolean>(false);
   const [playerHealFx, setPlayerHealFx] = React.useState<boolean>(false);
   const [botHealFx, setBotHealFx] = React.useState<boolean>(false);
+  const [playerTargetGlow, setPlayerTargetGlow] = React.useState<boolean>(false);
+  const [botTargetGlow, setBotTargetGlow] = React.useState<boolean>(false);
   const [impactSparks, setImpactSparks] = React.useState<Array<{ id: number; left: string; top: string }>>([]);
   const [playerLowWarned, setPlayerLowWarned] = React.useState<boolean>(false);
   const [botLowWarned, setBotLowWarned] = React.useState<boolean>(false);
@@ -313,6 +326,11 @@ const DiceShootout = (props: Props) => {
       setTimeout(() => setShake(false), 700);
               playDefeat();
       setTimeout(() => playGameOver(), 350);
+      // Show post-battle versus overlay with winner highlight
+      setTimeout(() => {
+        setWinnerSide(winner);
+        setPostVersusVisible(true);
+      }, 800);
     },
     [playerClutchHeal, botClutchHeal]
   );
@@ -441,6 +459,38 @@ const DiceShootout = (props: Props) => {
       // After dice animation, start clash, then apply damage on return
       setTimeout(() => {
         setRolling(false);
+        // Battle 2: penalty on any 1 rolled => self-damage and skip clash
+        if (isBattleTwo && (r1 === 1 || r2 === 1)) {
+          const selfPenalty = (r1 === 1 && r2 === 1) ? 10 : 5;
+          const msg = (r1 === 1 && r2 === 1) ? "Double 1’s, -10 HP!" : "1 rolled! -5 HP";
+          flashBanner(msg, 'banner-danger');
+          addLogEntry(`${who === 'player' ? 'You' : 'Opponent'} suffered ${selfPenalty} damage (rolled 1).`);
+          let ko = false;
+          if (who === 'player') {
+            setPlayerHP(hp => {
+              const newHP = clamp(hp - selfPenalty, 0, MAX_HP);
+              if (newHP <= 0) ko = true;
+              return newHP;
+            });
+          } else {
+            setBotHP(hp => {
+              const newHP = clamp(hp - selfPenalty, 0, MAX_HP);
+              if (newHP <= 0) ko = true;
+              return newHP;
+            });
+          }
+          if (ko) {
+            endGame(who === 'player' ? 'bot' : 'player');
+            return;
+          }
+          setTimeout(() => {
+            setShowDice(true);
+            setTurn(t => t === 'over' ? 'over' : who === 'player' ? 'bot' : 'player');
+            setRevealing(false);
+            handleTurnComplete(who);
+          }, RESULT_HOLD_MS);
+          return;
+        }
         setShowDice(false); // dice disappear during clash
         setClashSide(who);
         setRollScore(base); // show total rolled amount
@@ -460,13 +510,25 @@ const DiceShootout = (props: Props) => {
 
           // Add log entry once for the attack
           addLogEntry(`${attacker} attacked and dealt ${damage} damage.`);
+          // Battle 2 target success increments player heals and refresh target
+          if (isBattleTwo && currentTargetFace && (r1 === currentTargetFace || r2 === currentTargetFace)) {
+            if (who === 'player') {
+              setPlayerHeals(h => Math.min(MAX_HEALS, h + 1));
+              setPlayerTargetGlow(true); setTimeout(() => setPlayerTargetGlow(false), 1000);
+            } else {
+              setBotTargetGlow(true); setTimeout(() => setBotTargetGlow(false), 1000);
+            }
+            // new shared target for next turns
+            const next = 2 + Math.floor(Math.random() * 5);
+            setCurrentTargetFace(next);
+          }
 
           // Show opponent dialogue based on damage dealt
           if (who === "player") {
             if (damage >= 10) {
               showOpponentDialogue("You got hands!");
             } else if (damage <= 2) {
-              showOpponentDialogue("That felt like air brushed me");
+              showOpponentDialogue("Ant punch");
             }
             // Show double roll dialogue for player
             showDoubleRollDialogue(isDouble);
@@ -478,10 +540,10 @@ const DiceShootout = (props: Props) => {
             showDoubleRollDialogue(isDouble);
           }
 
-          if (who === "player") {
-            setBotHP((hp) => {
+        if (who === "player") {
+          setBotHP((hp) => {
               const prevHP = hp;
-              const newHP = clamp(hp - damage, 0, MAX_HP);
+            const newHP = clamp(hp - damage, 0, MAX_HP);
               addRetroNumber(damage, 'damage', 'bot');
               triggerAvatarHitTilt('bot');
               // Damage SFX
@@ -496,17 +558,17 @@ const DiceShootout = (props: Props) => {
                 setBotSpecialMeter((m) => clamp(m + 1, 0, 5));
                 flashBanner('Do or Die', 'banner-danger');
               }
-              if (newHP <= 0) endGame("player");
-              return newHP;
-            });
+            if (newHP <= 0) endGame("player");
+            return newHP;
+          });
 
             // Special meter: +1 per 10 damage, +1 if double
             if (damage >= 10) setPlayerSpecialMeter((m) => clamp(m + 1, 0, 5));
             if (isDouble) setPlayerSpecialMeter((m) => clamp(m + 1, 0, 5));
-          } else {
-            setPlayerHP((hp) => {
+        } else {
+          setPlayerHP((hp) => {
               const prevHP = hp;
-              const newHP = clamp(hp - damage, 0, MAX_HP);
+            const newHP = clamp(hp - damage, 0, MAX_HP);
               addRetroNumber(damage, 'damage', 'player');
               triggerAvatarHitTilt('player');
               // Damage SFX
@@ -521,29 +583,29 @@ const DiceShootout = (props: Props) => {
                 setPlayerSpecialMeter((m) => clamp(m + 1, 0, 5));
                 flashBanner('Do or Die', 'banner-danger');
               }
-              if (newHP <= 0) endGame("bot");
-              return newHP;
-            });
+            if (newHP <= 0) endGame("bot");
+            return newHP;
+          });
 
             // Bot special meter increments for bot attack
             if (damage >= 10) setBotSpecialMeter((m) => clamp(m + 1, 0, 5));
             if (isDouble) setBotSpecialMeter((m) => clamp(m + 1, 0, 5));
-          }
+        }
 
           // Wait, then proceed to next turn and show dice again (unless game over)
-          setTimeout(() => {
+        setTimeout(() => {
             setRollScore(null); // hide scoreboard before next turn
             setShowDice(true); // Show dice again
-            setTurn((t) =>
-              t === "over" ? "over" : who === "player" ? "bot" : "player"
-            );
+          setTurn((t) =>
+            t === "over" ? "over" : who === "player" ? "bot" : "player"
+          );
             setRevealing(false); // sequence complete
             handleTurnComplete(who);
-          }, RESULT_HOLD_MS);
+        }, RESULT_HOLD_MS);
         }, CLASH_MS); // Wait for clash animation to complete
       }, ROLL_ANIM_MS);
     },
-    [rolling, turn, endGame, revealing, playDiceRoll, playDamageDone, playDamageTaken, playLowHP, botLowWarned, playerLowWarned, showRetroMessage, playAudienceCheer, playAudienceBoo, showOpponentDialogue, showDoubleRollDialogue, handleTurnComplete]
+    [rolling, turn, endGame, revealing, playDiceRoll, playDamageDone, playDamageTaken, playLowHP, botLowWarned, playerLowWarned, showRetroMessage, playAudienceCheer, playAudienceBoo, showOpponentDialogue, showDoubleRollDialogue, handleTurnComplete, isBattleTwo, currentTargetFace]
   );
 
   const doHeal = React.useCallback(
@@ -591,9 +653,51 @@ const DiceShootout = (props: Props) => {
 
       setTimeout(() => {
         setRolling(false);
+        // Battle 2: penalty on any 1 rolled => self-damage and skip heal
+        if (isBattleTwo && (r1 === 1 || r2 === 1)) {
+          const selfPenalty = (r1 === 1 && r2 === 1) ? 10 : 5;
+          const msg = (r1 === 1 && r2 === 1) ? "Double 1’s, bad news!" : "Unlucky! 1 rolled";
+          flashBanner(msg, 'banner-danger');
+          addLogEntry(`${who === 'player' ? 'You' : 'Opponent'} suffered ${selfPenalty} damage (rolled 1).`);
+          let ko = false;
+          if (who === 'player') {
+            setPlayerHP(hp => {
+              const newHP = clamp(hp - selfPenalty, 0, MAX_HP);
+              if (newHP <= 0) ko = true;
+              return newHP;
+            });
+          } else {
+            setBotHP(hp => {
+              const newHP = clamp(hp - selfPenalty, 0, MAX_HP);
+              if (newHP <= 0) ko = true;
+              return newHP;
+            });
+          }
+          if (ko) {
+            endGame(who === 'player' ? 'bot' : 'player');
+            return;
+          }
+          // Target success check
+          if (who === 'player' && currentTargetFace && (r1 === currentTargetFace || r2 === currentTargetFace)) {
+            if (who === 'player') {
+              setPlayerHeals(h => Math.min(MAX_HEALS, h + 1));
+              setPlayerTargetGlow(true); setTimeout(() => setPlayerTargetGlow(false), 1000);
+            } else {
+              setBotTargetGlow(true); setTimeout(() => setBotTargetGlow(false), 1000);
+            }
+            const next = 2 + Math.floor(Math.random() * 5);
+            setCurrentTargetFace(next);
+          }
+          setTimeout(() => {
+            setShowDice(true);
+            setTurn(t => t === 'over' ? 'over' : who === 'player' ? 'bot' : 'player');
+            setRevealing(false);
+            handleTurnComplete(who);
+          }, RESULT_HOLD_MS);
+          return;
+        }
         setShowDice(false);
-        setRollScore(base); // show total rolled amount
-
+        
         // Play audience reaction for special rolls
         if (isDouble1) {
           playAudienceBoo();
@@ -603,6 +707,17 @@ const DiceShootout = (props: Props) => {
 
         // Add log entry once for the heal
         addLogEntry(`${healer} healed for ${healValue} HP.`);
+        // Battle 2 target match increases player heals and refresh target
+        if (isBattleTwo && currentTargetFace && (r1 === currentTargetFace || r2 === currentTargetFace)) {
+          if (who === 'player') {
+            setPlayerHeals(h => Math.min(MAX_HEALS, h + 1));
+            setPlayerTargetGlow(true); setTimeout(() => setPlayerTargetGlow(false), 1000);
+          } else {
+            setBotTargetGlow(true); setTimeout(() => setBotTargetGlow(false), 1000);
+          }
+          const next = 2 + Math.floor(Math.random() * 5);
+          setCurrentTargetFace(next);
+        }
 
         // Show opponent dialogue for low heal amounts
         if (who === "player" && healValue < 5) {
@@ -659,7 +774,7 @@ const DiceShootout = (props: Props) => {
         }, RESULT_HOLD_MS);
       }, ROLL_ANIM_MS);
     },
-    [rolling, revealing, turn, playerHeals, botHeals, playerHP, botHP, playDiceRoll, playHealDone, showRetroMessage, playAudienceCheer, playAudienceBoo, showOpponentDialogue, showDoubleRollDialogue, handleTurnComplete]
+    [rolling, revealing, turn, playerHeals, botHeals, playerHP, botHP, playDiceRoll, playHealDone, showRetroMessage, playAudienceCheer, playAudienceBoo, showOpponentDialogue, showDoubleRollDialogue, handleTurnComplete, isBattleTwo, currentTargetFace]
   );
 
   // Player Special move
@@ -684,7 +799,12 @@ const DiceShootout = (props: Props) => {
       setClashSide(null);
 
       // Apply effects
-      setBotHP((hp) => clamp(hp - specialDamage, 0, MAX_HP));
+      let ko = false;
+      setBotHP((hp) => {
+        const newHP = clamp(hp - specialDamage, 0, MAX_HP);
+        if (newHP <= 0) ko = true;
+        return newHP;
+      });
       setPlayerHP((hp) => clamp(hp + specialHeal, 0, MAX_HP));
 
       // Sounds
@@ -697,10 +817,13 @@ const DiceShootout = (props: Props) => {
 
       // Proceed to next turn
       setTimeout(() => {
-        setShowDice(true);
-        setTurn('bot');
-        setRevealing(false);
-        handleTurnComplete('player');
+        if (ko) {
+          endGame('player');
+        } else {
+          setShowDice(true);
+          setTurn('bot');
+          setRevealing(false);
+        }
       }, RESULT_HOLD_MS);
     }, CLASH_MS);
   }, [rolling, revealing, turn, playerSpecialMeter, playFight, triggerImpactFx, playDamageTaken, playDamageDone, playHealDone, handleTurnComplete]);
@@ -724,17 +847,25 @@ const DiceShootout = (props: Props) => {
 
     setTimeout(() => {
       setClashSide(null);
-      setPlayerHP((hp) => clamp(hp - specialDamage, 0, MAX_HP));
+      let ko = false;
+      setPlayerHP((hp) => {
+        const newHP = clamp(hp - specialDamage, 0, MAX_HP);
+        if (newHP <= 0) ko = true;
+        return newHP;
+      });
       setBotHP((hp) => clamp(hp + specialHeal, 0, MAX_HP));
       playDamageTaken();
       playDamageDone();
       playHealDone();
       setBotSpecialMeter(0);
       setTimeout(() => {
-        setShowDice(true);
-        setTurn('player');
-        setRevealing(false);
-        handleTurnComplete('bot');
+        if (ko) {
+          endGame('bot');
+        } else {
+          setShowDice(true);
+          setTurn('player');
+          setRevealing(false);
+        }
       }, RESULT_HOLD_MS);
     }, CLASH_MS);
   }, [rolling, revealing, turn, botSpecialMeter, playFight, triggerImpactFx, playDamageTaken, playDamageDone, playHealDone, handleTurnComplete]);
@@ -760,12 +891,12 @@ const DiceShootout = (props: Props) => {
       if (botSpecialMeter >= 5) {
         doBotSpecial();
       } else {
-        const choice = botDecide();
-        if (choice === "heal") {
-          if (botHeals > 0 && botHP < MAX_HP) doHeal("bot");
-          else doAttack("bot");
-        } else {
-          doAttack("bot");
+      const choice = botDecide();
+      if (choice === "heal") {
+        if (botHeals > 0 && botHP < MAX_HP) doHeal("bot");
+        else doAttack("bot");
+      } else {
+        doAttack("bot");
         }
       }
     }, BOT_ACT_DELAY_MS);
@@ -800,6 +931,17 @@ const DiceShootout = (props: Props) => {
     botTurnDoneRef.current = false;
   }, []);
 
+  const handleNextChallenge = React.useCallback(() => {
+    setPostVersusVisible(false);
+    reset();
+    // Re-show pre-battle versus countdown
+    setShowVersus(true);
+  }, [reset]);
+
+  const handleGoHome = React.useCallback(() => {
+    navigate(PATHS.LIBRARY);
+  }, [navigate]);
+
   // One-time user interaction unlock for AudioContext (Safari/iOS policies)
   React.useEffect(() => {
     const unlock = async () => {
@@ -817,25 +959,6 @@ const DiceShootout = (props: Props) => {
       window.removeEventListener("touchstart", unlock);
     };
   }, []);
-
-  // Start background music when component mounts
-  React.useEffect(() => {
-    // Try to start music immediately
-    const startMusic = async () => {
-      try {
-        await playBackgroundMusic();
-      } catch (error) {
-        console.log("Background music couldn't start automatically, waiting for user interaction");
-      }
-    };
-    
-    startMusic();
-     
-    // Cleanup: stop music when component unmounts
-    return () => {
-      stopBackgroundMusic();
-    };
-  }, [playBackgroundMusic, stopBackgroundMusic]);
 
   // Pre-battle versus countdown
   React.useEffect(() => {
@@ -858,28 +981,24 @@ const DiceShootout = (props: Props) => {
     return () => clearInterval(timer);
   }, [showVersus]);
 
-  // Start music on first user interaction if it hasn't started
-  React.useEffect(() => {
-    const handleUserInteraction = () => {
-      if (!isMusicPlaying()) {
-        playBackgroundMusic();
-      }
-      // Remove listeners after first interaction
-      window.removeEventListener('click', handleUserInteraction);
-      window.removeEventListener('keydown', handleUserInteraction);
-      window.removeEventListener('touchstart', handleUserInteraction);
-    };
+  // Begin versus only after opponent is selected
+  const handleSelectOpponent = React.useCallback(() => {
+    if (!selectedOpponent) return;
+    if (selectedOpponent === 2) {
+      navigate(PATHS.DICE_SHOOTOUT_B2);
+      return;
+    }
+    setShowOpponentSelect(false);
+    setShowVersus(true);
+    // Start music when entering versus
+    try { playBackgroundMusic(); } catch {}
+  }, [selectedOpponent, navigate, playBackgroundMusic]);
 
-    window.addEventListener('click', handleUserInteraction, { once: true });
-    window.addEventListener('keydown', handleUserInteraction, { once: true });
-    window.addEventListener('touchstart', handleUserInteraction, { once: true });
-
-    return () => {
-      window.removeEventListener('click', handleUserInteraction);
-      window.removeEventListener('keydown', handleUserInteraction);
-      window.removeEventListener('touchstart', handleUserInteraction);
-    };
-  }, [playBackgroundMusic, isMusicPlaying]);
+  // SFX helper for select clicks
+  const onOpponentCardClick = React.useCallback((id: 1 | 2 | 3) => {
+    setSelectedOpponent(id);
+    playSidebarOpen();
+  }, [playSidebarOpen]);
 
   const playerTurn = turn === "player";
   const over = turn === "over";
@@ -965,6 +1084,15 @@ const DiceShootout = (props: Props) => {
     }
   }, []);
 
+  // Initialize shared target at Battle 2 start if none
+  React.useEffect(() => {
+    if (!isBattleTwo) return;
+    if (currentTargetFace == null) {
+      const tf = 2 + Math.floor(Math.random() * 5); // 2..6
+      setCurrentTargetFace(tf);
+    }
+  }, [isBattleTwo, currentTargetFace]);
+
   return (
     <div className="dice-shootout-container">
       <GameContainer
@@ -981,10 +1109,94 @@ const DiceShootout = (props: Props) => {
         <div className={`dice-shootout-wrapper ${shake ? "shake" : ""} ${jolt ? "jolt" : ""} ${sidebarOpen ? "blurred" : ""} ${clashSide === 'player' ? 'clashing-player' : ''} ${clashSide === 'bot' ? 'clashing-bot' : ''}`} style={{ position: "relative" }}>
           {fightBanner && <div className="banner-fight">FIGHT!</div>}
           {koBanner && <div className="banner-ko">KO!</div>}
+          {!isBattleTwo && showOpponentSelect && (
+            <div className="opponent-select-overlay">
+              <div className="opponent-select-title">Choose Your Opponent</div>
+              <div className="opponent-cards">
+                <div className={`opponent-card ${selectedOpponent === 1 ? 'active' : ''}`} onClick={() => onOpponentCardClick(1)}>
+                  <img className="frame" src={IMAGES.DICE_SHOOTOUT.CHARACTER_FRAME_1} alt="frame" />
+                  <img className="sprite" src={IMAGES.PLAYER_B_AVATAR} alt="opponent 1" />
+                </div>
+                <div className={`opponent-card ${selectedOpponent === 2 ? 'active' : ''}`} onClick={() => onOpponentCardClick(2)}>
+                  <img className="frame" src={IMAGES.DICE_SHOOTOUT.CHARACTER_FRAME_2} alt="frame" />
+                  <img className="sprite" src={IMAGES.DICE_SHOOTOUT.SECOND_FIGHTER} alt="opponent 2" />
+                </div>
+                <div className={`opponent-card disabled ${selectedOpponent === 3 ? 'active' : ''}`}>
+                  <img className="frame" src={IMAGES.DICE_SHOOTOUT.CHARACTER_FRAME_3} alt="frame" />
+                  <div className="coming-soon">Coming Soon</div>
+                </div>
+              </div>
+              <button className={`select-btn ${!selectedOpponent ? 'disabled' : ''}`} disabled={!selectedOpponent} onClick={() => { playSidebarOpen(); handleSelectOpponent(); }}>
+                <img src={IMAGES.DICE_SHOOTOUT.SELECT_BTN} alt="select" />
+            </button>
+                </div>
+              )}
+          {postVersusVisible && (
+            <div className="versus-overlay">
+              <div className="versus-rules">
+                <div className="rules-title">Rules</div>
+                {isBattleTwo ? (
+                  <ul className="rules-list">
+                    <li>Roll dice, but avoid rolling a 1. It deals damage to you.</li>
+                    <li>Damage is higher if you roll two 1’s.</li>
+                    <li>If you roll the target dice face, you gain +1 heal.</li>
+                    <li>Take down the enemy before they take you down!</li>
+                  </ul>
+                ) : (
+                  <ul className="rules-list">
+                    <li>Take down your opponent before they take you out.</li>
+                    <li>Maximum of 3 lives left.</li>
+                    <li>Fill up the special meter to gain special ability.</li>
+                  </ul>
+                )}
+                </div>
+              <div className="versus-content">
+                <div className="versus-title">{isBattleTwo ? 'Battle 2' : 'Battle 1'}</div>
+                <img className="versus-lightning" src={IMAGES.DICE_SHOOTOUT.LIGHTNING} alt="lightning" />
+                <div className="versus-row">
+                  <div className={`fighter-intro left ${winnerSide === 'player' ? 'winner' : ''}`}>
+                    {winnerSide === 'player' && <div className="winner-badge">Winner</div>}
+                    <img className="fighter-sprite" src={IMAGES.PLAYER_A_AVATAR} alt="Player" />
+                    <img className="nameplate" src={IMAGES.DICE_SHOOTOUT.NAMEPLATE} alt="nameplate" />
+                    <div className="fighter-name">Ngannou</div>
+              </div>
+                  <img className="versus-icon" src={IMAGES.DICE_SHOOTOUT.VERSUS} alt="vs" />
+                  <div className={`fighter-intro right ${winnerSide === 'bot' ? 'winner' : ''}`}>
+                    {winnerSide === 'bot' && <div className="winner-badge">Winner</div>}
+                    <img className="fighter-sprite" src={(isBattleTwo || selectedOpponent === 2) ? IMAGES.DICE_SHOOTOUT.SECOND_FIGHTER : IMAGES.PLAYER_B_AVATAR} alt="Opponent" />
+                    <img className="nameplate" src={IMAGES.DICE_SHOOTOUT.NAMEPLATE} alt="nameplate" />
+                    <div className="fighter-name">Jon Jones</div>
+              </div>
+            </div>
+                <div className="versus-actions">
+                  <button className="vs-btn primary" onClick={handleNextChallenge}>Next Challenge</button>
+                  <button className="vs-btn" onClick={handleGoHome}>Home</button>
+          </div>
+                </div>
+              </div>
+          )}
           {showVersus && (
             <div className="versus-overlay">
+              <div className="versus-rules">
+                <div className="rules-title">Rules</div>
+                {isBattleTwo ? (
+                  <ul className="rules-list">
+                    <li>Roll dice, but avoid rolling a 1. It deals damage to you.</li>
+                    <li>Damage is higher if you roll two 1’s.</li>
+                    <li>If you roll the target dice face, you gain +1 heal.</li>
+                    <li>Take down the enemy before they take you down!</li>
+                  </ul>
+                ) : (
+                  <ul className="rules-list">
+                    <li>Take down your opponent before they take you out.</li>
+                    <li>Maximum of 3 lives left.</li>
+                    <li>Fill up the special meter to gain special ability.</li>
+                  </ul>
+                )}
+              </div>
               <div className="versus-content">
-                <div className="versus-title">Battle 1</div>
+                <div className="versus-title">{isBattleTwo ? 'Battle 2' : 'Battle 1'}</div>
+                <img className="versus-lightning" src={IMAGES.DICE_SHOOTOUT.LIGHTNING} alt="lightning" />
                 <div className="versus-row">
                   <div className="fighter-intro left">
                     <img className="fighter-sprite" src={IMAGES.PLAYER_A_AVATAR} alt="Player" />
@@ -993,30 +1205,29 @@ const DiceShootout = (props: Props) => {
                   </div>
                   <img className="versus-icon" src={IMAGES.DICE_SHOOTOUT.VERSUS} alt="vs" />
                   <div className="fighter-intro right">
-                    <img className="fighter-sprite" src={IMAGES.PLAYER_B_AVATAR} alt="Opponent" />
+                    <img className="fighter-sprite" src={(isBattleTwo || selectedOpponent === 2) ? IMAGES.DICE_SHOOTOUT.SECOND_FIGHTER : IMAGES.PLAYER_B_AVATAR} alt="Opponent" />
                     <img className="nameplate" src={IMAGES.DICE_SHOOTOUT.NAMEPLATE} alt="nameplate" />
                     <div className="fighter-name">Jon Jones</div>
                   </div>
                 </div>
                 <div className="versus-count">Starts in {versusCountdown}...</div>
+                </div>
               </div>
-            </div>
-          )}
+            )}
           {bannerText && <div className={`banner-generic ${bannerClass}`}>{bannerText}</div>}
           {retroMessage && (
             <div className={`retro-message ${retroMessage.type}`}>
               {retroMessage.text}
-            </div>
+          </div>
           )}
 
           {/* Roll Scoreboard */}
           {rollScore != null && (
             <div className="roll-scoreboard">
-              <div className="roll-scoreboard-inner">
-                {rollScore}
-              </div>
-            </div>
-          )}
+              <img className="scoreboard-bg" src={IMAGES.DICE_SHOOTOUT.SCOREBOARD} alt="scoreboard" />
+              <div className="roll-scoreboard-text">{rollScore}</div>
+                </div>
+              )}
 
           {/* Impact sparks */}
           {impactSparks.map(s => (
@@ -1030,22 +1241,27 @@ const DiceShootout = (props: Props) => {
                 {entry.message}
               </div>
             ))}
-          </div>
+              </div>
 
           {/* Menu Button - Top Left */}
           <button onClick={openSidebar} className="menu-btn" aria-label="menu">
             <GiHamburgerMenu size={20} />
           </button>
 
+          {/* Help Button - Top Right */}
+          <button onClick={() => setHelpOpen(true)} className="help-btn" aria-label="battle help">
+            <FaQuestionCircle size={20} />
+          </button>
+
           <div className="arena-row">
             {/* Player fighter (left) */}
             <div className="fighter player">
               <div className="hp-over">
-                <div className="dice-shootout-playerA-hp">
-                  <span>HP: {playerHP}</span>
-                  <div className="dice-shootout-playerA-hp-bar">
+              <div className="dice-shootout-playerA-hp">
+                <span>HP: {playerHP}</span>
+                <div className="dice-shootout-playerA-hp-bar">
                     <div className={`dice-shootout-playerA-hp-bar-progress ${playerHP <= 10 && playerHP > 0 ? 'danger' : playerHP <= 20 && playerHP > 10 ? 'warning' : ''}`} style={{ width: playerHPWidth, height: '100%', transition: 'width 260ms ease' }} />
-                  </div>
+                </div>
                   {/* Special meter under HP */}
                   <div className="special-meter">
                     {Array.from({ length: 5 }).map((_, idx) => (
@@ -1061,7 +1277,7 @@ const DiceShootout = (props: Props) => {
                     {n.value}
                   </div>
                 ))}
-                <img className={`${playerHitFx ? 'hit' : ''} ${playerHealFx ? 'heal' : ''} ${turn === 'player' ? 'active-turn' : ''} ${playerHitTilt ? 'avatar-hit-tilt' : ''}`} src={IMAGES.PLAYER_A_AVATAR} alt="Player avatar" />
+                <img className={`${playerHitFx ? 'hit' : ''} ${playerHealFx ? 'heal' : ''} ${playerTargetGlow ? 'target-glow' : ''} ${turn === 'player' ? 'active-turn' : ''} ${playerHitTilt ? 'avatar-hit-tilt' : ''}`} src={IMAGES.PLAYER_A_AVATAR} alt="Player avatar" />
               </div>
             </div>
 
@@ -1109,48 +1325,60 @@ const DiceShootout = (props: Props) => {
                     {n.value}
                   </div>
                 ))}
-                <img className={`${botHitFx ? 'hit' : ''} ${botHealFx ? 'heal' : ''} ${turn === 'bot' ? 'active-turn' : ''} ${botHitTilt ? 'avatar-hit-tilt' : ''}`} src={IMAGES.PLAYER_B_AVATAR} alt="Enemy avatar" />
+                <img className={`${botHitFx ? 'hit' : ''} ${botHealFx ? 'heal' : ''} ${botTargetGlow ? 'target-glow' : ''} ${turn === 'bot' ? 'active-turn' : ''} ${botHitTilt ? 'avatar-hit-tilt' : ''}`} src={(isBattleTwo || selectedOpponent === 2) ? IMAGES.DICE_SHOOTOUT.SECOND_FIGHTER : IMAGES.PLAYER_B_AVATAR} alt="Enemy avatar" />
               </div>
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="dice-shootout-actions">
-              {!playerDisabled && (
-                <>
-                  <div className="action-button-container">
-                    <ActionButton
-                      className="attack"
-                      handleClick={() => doAttack("player")}
-                    >
-                      <img src={IMAGES.ATTACK_BTN_ICON} alt="Attack" />
-                    </ActionButton>
-                    <div className="action-button-label">Attack</div>
-                  </div>
-                  <div className="action-button-container">
-                    <ActionButton
-                      className="heal"
-                      handleClick={() => doHeal("player")}
-                      disabled={!canPlayerHeal}
-                    >
-                      <img src={IMAGES.HEAL_BTN_ICON} alt="Heal" />
-                    </ActionButton>
-                    <div className="action-button-label">Heal ({playerHeals})</div>
-                  </div>
-                  {playerSpecialMeter >= 5 && (
-                    <div className="action-button-container">
-                      <ActionButton
-                        className="special"
-                        handleClick={() => doSpecial()}
-                      >
-                        <img src={IMAGES.SPECIAL_ATK_ICON} alt="Special" />
-                      </ActionButton>
-                      <div className="action-button-label">Special</div>
-                    </div>
-                  )}
-                </>
+          {/* Target scoreboard and unlucky banner (Battle 2) below dice and above actions */}
+          {isBattleTwo && (
+            <div className="between-dice-and-actions">
+              {currentTargetFace && !rolling && showDice && (
+                <div className="target-scoreboard">Target Dice: {currentTargetFace}</div>
+              )}
+              {bannerText && bannerClass.includes('banner-danger') && (
+                <div className={`banner-generic ${bannerClass} near-scoreboard`}>{bannerText}</div>
               )}
             </div>
+          )}
+
+          {/* Actions */}
+          <div className={`dice-shootout-actions ${isBattleTwo ? 'b2' : 'b1'}`}>
+            {!playerDisabled && (
+              <>
+                <div className="action-button-container">
+              <ActionButton
+                    className="attack"
+                handleClick={() => doAttack("player")}
+              >
+                <img src={IMAGES.ATTACK_BTN_ICON} alt="Attack" />
+              </ActionButton>
+                  <div className="action-button-label">Attack</div>
+                </div>
+                <div className="action-button-container">
+              <ActionButton
+                    className="heal"
+                handleClick={() => doHeal("player")}
+                    disabled={!canPlayerHeal}
+              >
+                <img src={IMAGES.HEAL_BTN_ICON} alt="Heal" />
+              </ActionButton>
+                  <div className="action-button-label">Heal ({playerHeals})</div>
+            </div>
+                {playerSpecialMeter >= 5 && (
+                  <div className="action-button-container">
+                    <ActionButton
+                      className="special"
+                      handleClick={() => doSpecial()}
+                    >
+                      <img src={IMAGES.SPECIAL_ATK_ICON} alt="Special" />
+                    </ActionButton>
+                    <div className="action-button-label">Special</div>
+          </div>
+                )}
+              </>
+            )}
+        </div>
 
           {/* Fight cloud effect during clash */}
           {clashSide && (
@@ -1160,8 +1388,7 @@ const DiceShootout = (props: Props) => {
           )}
         </div>
 
-        {botHP === 0 && <Victory />}
-        {playerHP === 0 && <Defeat />}
+        {/* Removed Victory/Defeat popups in favor of post-battle versus overlay */}
 
         {/* Sidebar Overlay */}
         {sidebarOpen && (
@@ -1169,19 +1396,19 @@ const DiceShootout = (props: Props) => {
             <div className="sidebar" onClick={(e) => e.stopPropagation()}>
               <div className="sidebar-icon" style={{ color: isMusicMuted ? '#9CA3AF' : '#10B981' }} data-label={isMusicMuted ? "Unmute Music" : "Mute Music"} onClick={toggleMusicMute}>
                 {isMusicMuted ? <FaVolumeMute /> : <FaMusic />}
-              </div>
+                </div>
               <div className="sidebar-icon" style={{ color: '#8B5CF6' }} data-label="Controls" onClick={openControls}>
                 <FaGamepad />
-              </div>
+                </div>
               <div className="sidebar-icon" style={{ color: '#F59E0B' }} data-label="Settings" onClick={openSettings}>
                 <FaCog />
               </div>
               <div className="sidebar-icon" style={{ color: '#06B6D4' }} data-label="Home">
                 <FaHome />
-              </div>
+            </div>
               <div className="sidebar-icon" style={{ color: '#06B6D4' }} data-label="Guide">
                 <FaFileAlt />
-              </div>
+            </div>
               <div className="sidebar-icon" style={{ color: '#EC4899' }} data-label="Rules">
                 <FaScroll />
               </div>
@@ -1204,6 +1431,26 @@ const DiceShootout = (props: Props) => {
         {/* Modals */}
         <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
         <ControlsModal isOpen={controlsOpen} onClose={() => setControlsOpen(false)} />
+        <Modal isOpen={helpOpen} onClose={() => setHelpOpen(false)} title={isBattleTwo ? 'Battle 2 Rules' : 'Battle 1 Rules'} variant='help'>
+          <div className="help-rules">
+            {!isBattleTwo ? (
+              <ul>
+                <li>1. Take down your opponent before they take you out.</li>
+                <li>2. Maximum of 3 lives left.</li>
+                <li>3. Fill up the special meter to gain special ability.</li>
+              </ul>
+            ) : (
+              <ul>
+                <li>1. Roll dice, but avoid rolling a 1. It damages you for -5 HP instead.</li>
+                <li>2. Double 1’s deal more damage to you for -10 HP.</li>
+                <li>3. You start with 0 heals. But you can obtain heals.</li>
+                <li>4. Rolling any of the dice face to match the target value will grant you +1 heal.</li>
+                <li>5. Fill your special meter to gain special ability.</li>
+                <li>6. Rolling &gt;=10, rolling a double or after each the end of both turns, will fill your special meter by 1.</li>
+              </ul>
+            )}
+          </div>
+        </Modal>
 
       </GameContainer>
     </div>

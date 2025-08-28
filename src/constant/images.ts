@@ -12,6 +12,14 @@ import damage_box from '../assets/images/diceShootout/damage_box.png'
 import heal_box from '../assets/images/diceShootout/heal_box.png'
 import versus from '../assets/images/diceShootout/versus.png'
 import nameplate from '../assets/images/diceShootout/nameplate.png'
+import select_btn from '../assets/images/diceShootout/select.png'
+import character_frame from '../assets/images/diceShootout/character_frame.png'
+import character_frame1 from '../assets/images/diceShootout/character_frame1.png'
+import character_frame2 from '../assets/images/diceShootout/character_frame2.png'
+import character_frame3 from '../assets/images/diceShootout/character_frame3.png'
+import second_fighter from '../assets/images/diceShootout/second_fighter.png'
+import scoreboard from '../assets/images/diceShootout/scoreboard.png'
+import lightning from '../assets/images/diceShootout/lightning.png'
 import degen_sweeper_flipped from '../assets/images/degenSweeper/unflipped.png'
 import degen_sweeper_bomb from '../assets/images/degenSweeper/bomb.png'
 import degen_sweeper_safe from '../assets/images/degenSweeper/safe.png'
@@ -126,7 +134,15 @@ export const IMAGES = {
         DAMAGE_BOX: damage_box,
         HEAL_BOX: heal_box,
         VERSUS: versus,
-        NAMEPLATE: nameplate
+        NAMEPLATE: nameplate,
+        SELECT_BTN: select_btn,
+        CHARACTER_FRAME: character_frame,
+        CHARACTER_FRAME_1: character_frame1,
+        CHARACTER_FRAME_2: character_frame2,
+        CHARACTER_FRAME_3: character_frame3,
+        SECOND_FIGHTER: second_fighter,
+        SCOREBOARD: scoreboard,
+        LIGHTNING: lightning
     },
     DEGEN_SWEEPER: {
         FLIPPED: degen_sweeper_flipped,

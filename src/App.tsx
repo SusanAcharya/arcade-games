@@ -4,6 +4,7 @@ import { PATHS } from "./path/paths";
 import Home from './pages/Homepage/Home';
 import GameLibrary from './pages/GameLibrary/GameLibrary';
 import DiceShootout from './pages/DiceShootout/DiceShootout';
+import DiceShootoutB2 from './pages/DiceShootout/DiceShootoutB2.tsx';
 import DegenSweeper from './pages/DegenSweeper/DegenSweeper';
 import GangWar21 from './pages/GangWar21/GangWar21';
 
@@ -17,6 +18,7 @@ function App() {
           <Route path={PATHS.HOME} element={<Home />} />
           <Route path={PATHS.LIBRARY} element={<GameLibrary />} />
           <Route path={PATHS.DICE_SHOOTOUT} element={<DiceShootout />} />
+          <Route path={PATHS.DICE_SHOOTOUT_B2} element={<DiceShootoutB2 />} />
           <Route path={PATHS.DEGEN_SWEEPER} element={<DegenSweeper />} />
           <Route path={PATHS.GANG_WAR_21} element={<GangWar21 />} />
         </Routes>

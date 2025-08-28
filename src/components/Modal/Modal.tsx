@@ -8,14 +8,15 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
+  variant?: 'default' | 'help';
 }
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
+const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, variant = 'default' }) => {
   if (!isOpen) return null;
 
   return (
     <div className="modal-overlay">
-      <div className="modal-content">
+      <div className={`modal-content ${variant}`}>
         <img src={IMAGES.MODAL_FRAME} alt="Modal frame" className="modal-frame" />
         <img 
           src={IMAGES.CLOSE_BUTTON} 
