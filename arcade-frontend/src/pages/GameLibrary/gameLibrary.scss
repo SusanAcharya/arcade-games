@@ -1,0 +1,186 @@
+.game-library {
+    width: 100%;
+    min-height: 100vh;
+    padding-top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 60px;
+    background: url('/src/assets/images/banner/library_bg.png') no-repeat center center / cover;
+
+    &-header {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        h3 {
+            font-family: 'Jersey 10', sans-serif;
+            font-weight: 400;
+            font-style: Regular;
+            font-size: 72px;
+            leading-trim: NONE;
+            line-height: 100%;
+            letter-spacing: 0%;
+            vertical-align: middle;
+            color: #00FF5D;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+    }
+
+    .controls-hint {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: -20px;
+        
+        p {
+            font-family: 'Jersey 10', sans-serif;
+            font-size: 24px;
+            color: #00FF5D;
+            text-align: center;
+            opacity: 0.8;
+            margin: 0;
+        }
+    }
+
+    &-wrapper {
+        width: 98%;
+        margin: 0 auto;
+        overflow-x: auto;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(260px, 1fr));
+        gap: 40px;
+        justify-items: center;
+        align-items: end;
+        padding-bottom: 60px;
+        margin-top: auto;
+        min-height: calc(100vh - 200px);
+        position: relative;
+    }
+}
+
+.machine {
+    position: relative;
+    width: 260px;
+    height: 420px;
+    display: grid;
+    place-items: end center;
+    cursor: pointer;
+    overflow: visible;
+    transition: all 300ms ease;
+    border-radius: 20px;
+    opacity: 1;
+}
+.machine img { image-rendering: pixelated; display: block; }
+.machine .cab { 
+    width: 100%; 
+    height: auto; 
+    filter: drop-shadow(0 4px 16px rgba(0,0,0,0.45)); 
+    transition: transform 160ms ease, filter 160ms ease; 
+    z-index: 1;
+}
+.machine .glow { 
+    position: absolute; 
+    bottom: 40px; 
+    width: 260px; 
+    height: 260px; 
+    border-radius: 50%; 
+    background: radial-gradient( circle at 50% 50%, rgba(255,215,0,0.35), rgba(255,215,0,0) 60% ); 
+    opacity: 0; 
+    pointer-events: none; 
+    transition: opacity 160ms ease; 
+    filter: blur(12px); 
+    z-index: 0;
+}
+.machine .hover-badge { 
+    position: absolute; 
+    top: -80px; 
+    left: 50%; 
+    transform: translateX(-50%); 
+    opacity: 0; 
+    transition: opacity 160ms ease; 
+    width: 70px; 
+    height: auto; 
+    image-rendering: pixelated; 
+    z-index: 10;
+    pointer-events: none;
+}
+/* Mouse hover effects removed - only character-based hover effects remain */
+
+/* Character hovered machine effect */
+.machine.character-hovered { 
+    transform: scale(1.1) translateY(-20px);
+    background: linear-gradient(135deg, rgba(0, 100, 200, 0.3), rgba(0, 150, 255, 0.2));
+    box-shadow: 0 20px 40px rgba(0, 100, 200, 0.3);
+    z-index: 10;
+}
+.machine.character-hovered .glow { opacity: 1; }
+.machine.character-hovered .hover-badge { opacity: 1; }
+.machine.character-hovered .cab { 
+    transform: translateY(-6px); 
+    filter: drop-shadow(0 4px 16px rgba(0,0,0,0.45)) 
+            drop-shadow(0 0 20px rgba(255,215,0,0.6)) 
+            drop-shadow(0 0 40px rgba(255,215,0,0.4)) 
+            drop-shadow(0 0 60px rgba(255,215,0,0.2));
+}
+
+/* Walker Character */
+.walker-character {
+    position: absolute;
+    bottom: 50px;
+    width: 200px;
+    height: 200px;
+    z-index: 20;
+    transition: left 1000ms ease;
+    pointer-events: none;
+    transform-origin: bottom center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.walker-gif, .walker-still {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    image-rendering: pixelated;
+    transition: none; /* No transition for instant flipping */
+}
+
+/* Direction-based animations - Flip when facing left */
+.walker-character.facing-left .walker-gif,
+.walker-character.facing-left .walker-still {
+    transform: scaleX(-1);
+}
+
+.walker-character.facing-right .walker-gif,
+.walker-character.facing-right .walker-still {
+    transform: scaleX(1);
+}
+
+/* Walking Animation - Add bounce effect when walking */
+.walker-character.walking.facing-left .walker-gif {
+    animation: walk-bounce-left 1.5s ease-in-out;
+}
+
+.walker-character.walking.facing-right .walker-gif {
+    animation: walk-bounce-right 1.5s ease-in-out;
+}
+
+/* Walking Keyframes */
+@keyframes walk-bounce-left {
+    0%, 100% { transform: scaleX(-1) translateY(0px); }
+    50% { transform: scaleX(-1) translateY(-2px); }
+}
+
+@keyframes walk-bounce-right {
+    0%, 100% { transform: scaleX(1) translateY(0px); }
+    50% { transform: scaleX(1) translateY(-2px); }
+}
+
+/* Reduce opacity of non-character-hovered machines */
+.machine:not(.character-hovered) {
+    opacity: 0.5;
+    transition: opacity 300ms ease;
+}
