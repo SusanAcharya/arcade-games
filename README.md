@@ -1,5 +1,5 @@
-**Arcade Games
-**
+Arcade Games
+
 This repository contains a collection of web-based retro arcade games built with React, TypeScript, and Vite. Experience classic game mechanics with a modern twist, featuring dynamic animations and sound effects.
 
 Games Included
